@@ -1,79 +1,277 @@
-# Codey Desktop / Paseo bridge
+# Codey ↔ Paseo Bridge
 
-通过本机 Codex Desktop 已有的连接，让 Paseo 使用当前 Codey 后端，并保留 FastCtx 和 Codey 子代理能力。适配器不会另起 Codex app-server。
+**让 Paseo 网页和手机 App 接入当前 Codey 启动的 Codex 后端，继续同一会话。**
+
+本项目通过本机 Codex Desktop 已有的连接转发请求与事件，保留后端提供的 FastCtx、Codey 子代理及运行时配置，并补充模型、推理强度和 Fast 状态同步。电脑上的 Codey / Codex Desktop 需要持续运行。
+
+> 当前定位：Windows 本机集成原型。已在指定版本组合上完成验证，依赖 Desktop 内部接口，升级应用后需要重新核对兼容性。
+
+## 目录
+
+- [功能与边界](#功能与边界)
+- [工作原理](#工作原理)
+- [环境要求](#环境要求)
+- [快速开始](#快速开始)
+- [手机连接与历史会话](#手机连接与历史会话)
+- [设置同步规则](#设置同步规则)
+- [启动参数](#启动参数)
+- [运行数据与隐私](#运行数据与隐私)
+- [常见问题](#常见问题)
+- [开发与验证](#开发与验证)
+
+## 功能与边界
+
+| 能力 | 当前行为 |
+| --- | --- |
+| 复用后端 | 使用 Codey 启动的现有 Codex app-server，适配器不创建另一个后端 |
+| 网页与手机接入 | 本机使用 Paseo Web，手机通过 Paseo relay 配对连接 |
+| Codey 能力 | 启动时核验 FastCtx、具名子代理和 Codey 运行时指令 |
+| 历史会话 | 通过 Paseo 导入已有 Codex 会话，恢复后订阅后续事件 |
+| 模型与推理强度 | 按会话同步实际轮次使用的设置 |
+| Fast | 同步 Desktop 原生选择状态，并根据后端模型目录补齐支持的模型开关 |
+| 独立运行目录 | 专用 daemon 使用项目内的 `.paseo-codey/` |
+| 启停管理 | 提供双击入口；停止专用 daemon 时保留 Codey 后端 |
+
+权限设置仍由各客户端及后端的原生机制处理，本项目没有实现权限选择器的完整双向同步。Fast 的界面状态和请求选择不代表上游实际加速或计费结果已经验证。
+
+## 工作原理
+
+```mermaid
+flowchart LR
+    Web[本机 Paseo Web] <--> Daemon[专用 Paseo daemon]
+    Phone[Paseo 手机 App] <--> Relay[Paseo relay]
+    Relay <--> Daemon
+    Daemon <--> Shim[JSONL 桥接适配器]
+    Shim <-->|本机 CDP / Desktop IPC| Desktop[Codex Desktop]
+    Desktop <-->|已有连接| Backend[现有 Codey / Codex 后端]
+    Sync[设置同步进程] -. 原生设置接口 .-> Daemon
+    Sync -. Fast 选择状态 .-> Desktop
+```
+
+Paseo 的 Codex provider 启动轻量 JSONL 适配器。适配器通过本机 CDP 调用 Desktop 的 Electron 消息桥，由 Desktop 原来的连接转发请求；返回事件再送回 Paseo。
+
+物理后端连接由 Desktop 管理。适配器只维护自己的请求、事件订阅和逻辑握手；断开适配器不会关闭 Desktop 后端。连接或能力验证失败时会报错，不会自动切换到普通 Codex 后端。
+
+设置同步是独立进程：它增量读取会话轮次元数据，通过 Paseo 的原生设置接口更新模型和强度，并访问当前 Desktop 原生 Fast 选择状态。
 
 ## 环境要求
 
-- Windows，Node.js 22 或更新版本。
-- 已安装 Paseo，且 Codey 启动的 Codex Desktop 正在运行。
-- Desktop 已开启本机 CDP 调试端口，后端具有 Codey 运行时能力。
+| 组件 | 要求或已验证版本 |
+| --- | --- |
+| 系统 | Windows，能够运行 PowerShell 和 CMD |
+| Node.js | 启动脚本要求 22 或更新版本；本机已验证 24.x |
+| Paseo | 已安装桌面程序；已验证 0.7.2，使用其自带运行时和依赖 |
+| Codex CLI 后端 | 已验证 0.153.4，由 Codey / Desktop 启动 |
+| Codex Desktop | 已开启本机 CDP 调试端口，并具有 Codey 注入的连接与作用域发现能力 |
+| 原生 Fast 适配 | 当前校验的 Desktop 资源为 `app-initial-92cbfeba4f7c.js` |
 
-当前已验证的组合为 Paseo 0.7.2、Codex CLI 0.153.4，原生 Fast 选择器对应 Desktop 资源版本 `app-initial-92cbfeba4f7c.js`。适配依赖 Desktop 内部接口；应用升级后需要重新验证。
+无需为本仓库执行 `npm install`。主脚本使用 Node.js 内置模块，Paseo 客户端依赖由已安装的 Paseo 提供。Fast 兼容钩子还需要 Paseo 自带的 Node 运行时支持 `module.registerHooks`。
 
-## 启动与停止
+启动脚本会检测现有进程和调试端口，但不会替你安装应用或开启 Desktop 的调试端口。
 
-双击 `启动-Paseo-Codey.cmd`。脚本自动检测当前 Codey 进程、CDP 端口和 Paseo 安装目录，验证后启动专用 daemon、设置同步进程，并打开 Web 页面。默认入口为 `http://127.0.0.1:17677`。
+## 快速开始
 
-重复启动会复用现有专用进程。关闭命令行窗口不停止服务；双击 `停止-Paseo-Codey.cmd` 停止专用 daemon，同步进程随后退出，Codey 后端保持运行。
+### 1. 准备应用
 
-Node 应位于 PATH；也可用环境变量 `REM_CODEY_NODE` 指定 Node 可执行文件。需要手动指定 Paseo 时，将安装程序位置作为 `--paseo-exe` 的参数传入，不要把本机安装路径写进受版本管理的脚本。
-
-在仓库目录中也可以运行：
+1. 使用 Codey 打开 Codex Desktop，保持它运行。
+2. 首次使用时先打开 Paseo，便于脚本识别安装位置。
+3. 在项目目录打开 PowerShell，确认 Node 可用：
 
 ```powershell
-# 仅检查后端，不启动或停止 daemon
+node --version
+```
+
+Node 不在 PATH 中时，可为 CMD 入口设置环境变量 `REM_CODEY_NODE`，值为 Node 可执行文件位置；不要将个人安装路径写入受版本管理的脚本。
+
+### 2. 检查连接
+
+```powershell
 node tools/launch_paseo_codey.mjs --check-only
+```
 
-# 启动但不打开浏览器
-node tools/launch_paseo_codey.mjs --no-browser
+这一步核验现有 Codey 后端，不启动或停止 daemon。若检测到多个 Desktop 实例，使用 `--cdp-port` 选择目标。
 
-# 启用 relay 并显示手机配对信息
-node tools/launch_paseo_codey.mjs --relay
+### 3. 启动专用服务
 
-# 指定端口，或停止专用 daemon
-node tools/launch_paseo_codey.mjs --port 17678
+双击 **`启动-Paseo-Codey.cmd`**，或运行：
+
+```powershell
+node tools/launch_paseo_codey.mjs
+```
+
+脚本核验后端后，启动专用 daemon 与设置同步进程，并打开 Web 页面。默认本机入口：
+
+```text
+http://127.0.0.1:17677
+```
+
+以终端实际打印的入口为准。重复启动会复用已运行的专用 daemon；关闭命令行窗口后，服务继续运行。首次创建的专用配置只启用 Codex provider。
+
+### 4. 停止服务
+
+双击 **`停止-Paseo-Codey.cmd`**，或运行：
+
+```powershell
 node tools/launch_paseo_codey.mjs --stop
 ```
 
-使用 CMD 入口且不希望等待按键时，将 `--no-pause` 放在第一个参数位置。运行中的连接配置有变化时，先停止专用 daemon 再启动。
+专用 daemon 停止后，同步进程随后退出。Codey / Codex Desktop 及其后端保持运行，专用目录里的历史和配对信息保留。
 
-## 手机连接与历史
+## 手机连接与历史会话
 
-在专用 daemon 的 Web 页面开启 relay 后，用手机扫描该服务的配对二维码。脚本将 relay 开关保存到配置中，不使用锁定界面开关的 daemon 启动覆盖参数。原 Paseo 应用可能仍连接另一套服务，需要在手机上选择这里启动的专用服务。
+### 手机配对
 
-配对 URL 和二维码具有访问凭据性质，不要提交到 Git 或公开分享。历史会话可用 Paseo 的导入功能连接；适配器在 `thread/read` 和 turn 请求前订阅事件，以接收恢复后会话的后续输出。
+1. 启动专用 daemon，打开它的 Paseo Web 页面。
+2. 在 Web 页面启用 relay，并查看配对二维码。
+3. 使用手机 Paseo App 扫码，连接这套专用服务。
 
-## 设置同步
+首次启动时也可直接启用 relay 并打印配对信息：
 
-- **模型与推理强度**：按会话同步。发送消息后，以实际轮次记录为准更新；Desktop 到 Paseo 通常约 1.5–3 秒。尚未发送的选择不会被旧轮次反复覆盖。
-- **Fast**：通过 Desktop 原生选择状态与 Paseo 设置接口双向同步。Desktop Fast 是全局选择，会联动专用 daemon 中已打开且支持 Fast 的 Codex 会话。同一次检查发现两端同时变化时，优先采用 Desktop 的变化。
-- **Fast 模型支持**：专用进程使用 Codey 模型目录替换 Paseo 的固定前缀判断，使目录中支持 Fast 的 Astra 等模型显示原生开关。只修改模块加载结果，不修改原 Paseo 安装包。
+```powershell
+node tools/launch_paseo_codey.mjs --relay
+```
 
-Paseo 修改 Fast 时，同步进程会更新 Codex 对应的 `service_tier` 配置及 Desktop 原生选择状态。开关可用和状态同步不代表上游实际速度或计费已经验证。权限设置仍由各客户端的原生机制处理。
+如果专用 daemon 已运行且 relay 尚未启用，直接使用 Web 开关即可；命令行改配置被拒绝时，先停止专用 daemon 再重新启动。relay 开关会持久化，之后启动会保留它的设置。
 
-## 本地数据与提交范围
+原 Paseo 应用和旧手机配对可能连接另一套 daemon。应以本项目启动时打印的入口、专用服务身份和二维码为准。
 
-运行配置、配对身份、进程信息、日志及同步水位保存在 `.paseo-codey/`。这些文件包含机器信息或会话数据，已整体加入忽略规则。历史取证资料、旧 PoC 配置和机器专用调查脚本同样不纳入版本管理，保留在本地供复查。
+### 导入历史
 
-提交前检查 `git diff --cached` 和 `git status --short`，不要强制添加上述目录。日志默认仅记录元数据；故障详情仍可能包含本地路径，不能直接当作脱敏报告发布。
+在 Paseo 中使用 **Import session / 导入会话**，选择 Codex 和需要继续的历史会话。列表可能按工作目录筛选，已导入的会话应从现有工作区进入。
 
-## 源码与验证
+共享后端不会自动让所有历史出现在 Paseo 列表里。导入建立会话关联；恢复时，桥接会在读取线程和发送请求前注册事件订阅，以接收后续输出。
 
-| 文件 | 用途 |
+## 设置同步规则
+
+| 设置 | 同步时机 | 作用范围 |
+| --- | --- | --- |
+| 模型 | 发送消息后，以实际轮次记录为准 | 当前会话 |
+| 推理强度 | 发送消息后，以实际轮次记录为准 | 当前会话 |
+| Fast | 原生选择或 Paseo 开关发生变化后 | Desktop 全局选择，联动专用 daemon 中已打开且支持 Fast 的 Codex 会话 |
+
+同步进程每轮检查结束后等待约 1.5 秒。本机实测设置变化通常约 1.5–3 秒反映到另一端；这不是网络或模型响应时延保证。
+
+**只改模型或推理强度下拉框、尚未发送消息时，另一端不一定立即变化。** 同步进程保存已处理轮次，避免把未发送的新选择反复覆盖为上一轮的设置。
+
+Fast 使用 Desktop 的原生选择状态，因为启动参数可能覆盖 `config/read` 返回的 `service_tier`。Paseo 切换 Fast 时，同步进程会同时更新 Codex 对应配置和 Desktop 原生选择。同一次检查发现两端同时改 Fast 时，优先采用 Desktop 的变化。
+
+Paseo 0.7.2 的 Fast 支持判断使用固定模型前缀。专用 daemon 的加载钩子改用当前后端 `model/list` 返回的支持目录，使目录中支持 Fast 的 Astra 等模型显示原生开关；不会修改原 Paseo 安装包。
+
+## 启动参数
+
+以下参数适用于 `node tools/launch_paseo_codey.mjs`，也可通过 CMD 入口传入。
+
+| 参数 | 用途 |
 | --- | --- |
-| `tools/launch_paseo_codey.mjs` | 启停、安装检测与后端能力核验 |
-| `tools/cdp.mjs`、`tools/desktop_bridge.mjs` | 本机 Desktop 请求与事件连接 |
-| `tools/paseo_desktop_shim.mjs` | Paseo JSONL 子进程适配 |
-| `tools/paseo_settings_sync.mjs`、`tools/settings_sync_policy.mjs` | 轮次读取、同步策略和水位 |
-| `tools/desktop_settings.mjs` | 当前 Desktop 原生 Fast 状态适配 |
-| `tools/paseo_native_client.mjs` | 原生 Paseo 设置客户端 |
-| `tools/paseo_compat.mjs` | 专用 daemon 的 Fast 模型目录兼容 |
-| `tools/asar_inspect.py` | 只读提取安装包指定文件 |
+| `--check-only` | 只核验现有后端 |
+| `--no-browser` | 启动后不自动打开浏览器 |
+| `--relay` | 启用持久化 relay 配置并打印手机配对信息 |
+| `--port <端口>` | 指定专用 daemon 本机端口，默认 17677 |
+| `--cdp-port <端口>` | 选择检测到的 Codey Desktop 调试端口 |
+| `--paseo-exe <程序位置>` | 手动指定 Paseo 可执行文件 |
+| `--stop` | 停止专用 daemon |
+| `--help` | 显示简要帮助 |
+| `--no-pause` | CMD 入口退出时不等待按键，必须放在第一个参数位置 |
 
-不连接服务的策略测试：
+```powershell
+# 启动但不打开浏览器
+node tools/launch_paseo_codey.mjs --no-browser
+
+# 更换运行中的监听端口前，先停止专用 daemon
+node tools/launch_paseo_codey.mjs --stop
+node tools/launch_paseo_codey.mjs --port 17678
+
+# 从 CMD 入口调用，不等待按键
+& '.\启动-Paseo-Codey.cmd' --no-pause --no-browser
+```
+
+## 运行数据与隐私
+
+运行数据保存在项目内的 `.paseo-codey/`，已整体加入 `.gitignore`。
+
+| 文件 | 内容 |
+| --- | --- |
+| `config.json` | 专用 daemon 与 provider 配置 |
+| `connection.json` | 检测到的程序位置、端口、进程信息及验证时间 |
+| `fast-models.json` | 后端返回的 Fast 支持模型目录 |
+| `settings-sync.pid.json` | 设置同步进程状态 |
+| `settings-sync-state.json` | 已处理轮次与设置同步水位 |
+| `logs/bridge.jsonl` | 桥接请求和事件元数据 |
+| `logs/settings-sync.jsonl` | 设置同步操作及错误 |
+
+**配对 URL、二维码及运行目录中的身份数据应作为访问凭据保护。** 不要公开分享，也不要强制加入 Git。
+
+日志默认以元数据为主，但错误信息仍可能包含本地路径；发布故障报告前需要脱敏。历史取证资料、旧 PoC 配置和机器专用调查脚本保留在本地，不随仓库分发。普通停止或重启服务不需要删除运行目录。
+
+本机服务和 CDP 使用环回连接；手机接入走 Paseo 的配对与 relay 流程。不要为了手机连接而直接向公网暴露 CDP。
+
+## 常见问题
+
+### 提示找不到 Codey 后端或 Desktop 页面
+
+确认 Desktop 是通过 Codey 启动的，且已开启本机 CDP。脚本还会核验 FastCtx、具名子代理和运行时指令；普通 Codex 实例可能无法通过检查。多个实例同时运行时，用 `--cdp-port` 选择。
+
+### 找不到 Paseo 或 Node
+
+先打开已安装的 Paseo 再启动脚本，或使用 `--paseo-exe` 指定安装程序。Node 需要位于 PATH；使用双击入口时也可配置 `REM_CODEY_NODE`。
+
+### 提示端口被占用或运行中的配置发生变化
+
+检查是否连接了另一套服务。使用其他端口前，先停止本项目的专用 daemon，再带 `--port` 启动。脚本不会终止其他占用端口的进程。
+
+### relay 开关提示由启动覆盖参数控制
+
+当前启动器将 relay 开关保存在配置中，不向 daemon 传入 `--relay` / `--no-relay` 覆盖参数，并清除继承的 `PASEO_RELAY_ENABLED`。若服务由旧脚本启动，停止专用 daemon 后用当前脚本重新启动。
+
+### Paseo 的模型或推理强度没有立即变化
+
+先确认是否已经发送消息，以及两端是否打开同一个导入会话。模型和强度按实际轮次同步；仅修改下拉框不等于已经更新后端轮次。需要进一步排查时查看 `logs/settings-sync.jsonl`。
+
+### Astra 没有 Fast，或应用升级后 Fast 同步报错
+
+确认连接的是本项目的专用 daemon。首次加载兼容钩子需要重启专用 daemon。若日志出现 `Desktop settings adapter needs review` 或模块结构不匹配，需要复核新版本的适配；不要通过移除校验强行宣称兼容。
+
+### 运行中追加的消息在另一端较晚显示
+
+界面提交时间、后端接纳时间和另一端显示时间可能不同。运行中追加的消息可能等待后端处理点；排查时应比较后端消息事件、桥接接收记录和客户端时间，而不是仅根据分钟级时间标签判断桥接延迟。
+
+## 开发与验证
+
+项目源码布局：
+
+```text
+.
+├── 启动-Paseo-Codey.cmd
+├── 停止-Paseo-Codey.cmd
+├── tools/
+│   ├── launch_paseo_codey.mjs    # 启停、安装检测、后端能力核验
+│   ├── cdp.mjs                  # 本机 CDP 连接
+│   ├── desktop_bridge.mjs       # Desktop 请求与事件转发
+│   ├── paseo_desktop_shim.mjs   # Paseo JSONL 适配器
+│   ├── paseo_settings_sync.mjs  # 轮次读取与设置同步进程
+│   ├── settings_sync_policy.mjs # 同步变化判断
+│   ├── desktop_settings.mjs     # Desktop 原生 Fast 状态适配
+│   ├── paseo_native_client.mjs  # 原生 Paseo 设置客户端
+│   ├── paseo_compat.mjs         # Fast 模型目录兼容钩子
+│   └── asar_inspect.py          # 只读提取安装包指定文件
+└── tests/
+    └── settings-policy-check.mjs
+```
+
+运行不连接应用服务的策略测试：
 
 ```powershell
 node tests/settings-policy-check.mjs
 ```
 
-已进行本机共享后端、历史恢复、模型与强度同步、原生 Fast 开关双向同步的集成验证。私有会话记录不随仓库分发。手机最终显示、上游加速效果以及其他应用版本需要单独验收。
+测试覆盖实际轮次变化、未发送选择保护、Fast 标识判断，以及轮次文件的增量读取和截断处理。安装包检查辅助工具使用 Python；普通启动不依赖 Python。
+
+已进行本机共享后端、历史恢复、模型与强度双向传递、原生 Fast 开关双向同步的集成验证。私有会话记录不随仓库分发；策略测试不能替代手机实际显示、上游加速效果和其他应用版本的验收。
+
+提交前检查改动与暂存范围：
+
+```powershell
+git diff --check
+git diff --cached
+git status --short
+```
