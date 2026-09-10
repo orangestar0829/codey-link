@@ -1,5 +1,7 @@
 # Codey ↔ Paseo Bridge
 
+项目版本：**`0.0.1`**，对应 Git 标签 `0.0.1`。
+
 **让 Paseo 网页和手机 App 接入当前 Codey 启动的 Codex 后端，继续同一会话。**
 
 本项目通过本机 Codex Desktop 已有的连接转发请求与事件，保留后端提供的 FastCtx、Codey 子代理及运行时配置，并补充模型、推理强度和 Fast 状态同步。电脑上的 Codey / Codex Desktop 需要持续运行。

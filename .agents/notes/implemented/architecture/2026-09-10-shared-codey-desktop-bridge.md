@@ -95,6 +95,8 @@ Desktop Fast 是全局选择，会联动专用 daemon 中打开且支持 Fast �
 
 [README](../../../../README.md) 展示当前验证基线，[COMPATIBILITY.md](../../../../COMPATIBILITY.md) 保存功能矩阵、历史组合和升级验证方式。项目版本独立编号，每次验证绑定实际 tag 或 commit；升级后没有测试记录的组合先标记为未验证，不将其等同于不兼容，也不承诺兼容全部更高版本。
 
+首个项目版本及验证基线为 `0.0.1`，由同名 Git 标签固定。版本说明、兼容记录和标签保持一致，组件版本仍各自记录，不与项目版本混用。
+
 ## Alternatives considered
 
 - **直接连接现有 app-server WebSocket**：验证环境的后端实际使用 stdio，没有相应 WebSocket 监听入口；接口支持该传输方式，不意味着当前实例已经开放它。
