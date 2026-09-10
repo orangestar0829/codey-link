@@ -1,0 +1,32 @@
+# Private runtime state, pairing credentials, conversations and evidence.
+/.paseo-codey/
+/paseo-poc-home/
+/evidence/
+/.agents/
+/FEASIBILITY.md
+/POC_MARKER.txt
+
+# Machine-specific investigation scripts; retained locally for reference.
+/tools/run_poc.mjs
+/tools/control_poc.mjs
+/tools/collect_evidence.mjs
+
+# Local credentials and generated files.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.log
+*.jsonl
+*.sqlite*
+*.db
+*.bak
+*.tmp
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
