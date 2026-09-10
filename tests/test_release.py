@@ -23,9 +23,8 @@ class ReleaseTests(unittest.TestCase):
         self.repo.mkdir()
         self.document = (ROOT / "COMPATIBILITY.md").read_text(encoding="utf-8")
         # 测试固定版本的隔离仓库，不依赖真实仓库的标签。
-        import re
-        self.document = re.sub(r"项目基线：\*\*`[^`]+`\*\*", "项目基线：**`0.0.1`**", self.document)
         self.git("init", "-q")
+        self.git("config", "core.autocrlf", "false")
         for name in release.FILES:
             path = self.repo / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -53,7 +52,10 @@ class ReleaseTests(unittest.TestCase):
             metadata = json.loads(bundle.read(prefix + "release.json"))
             self.assertEqual(metadata["commit"], self.git("rev-parse", "HEAD").decode().strip())
         self.assertEqual((output / "SHA256SUMS.txt").read_text().split()[0], hashlib.sha256(first_bytes).hexdigest())
-        self.assertIn("### 功能矩阵", (output / "release-notes.md").read_text(encoding="utf-8"))
+        notes = (output / "release-notes.md").read_text(encoding="utf-8")
+        self.assertIn("### 验证历史", notes)
+        self.assertNotIn("`dc8def2`", notes)
+        self.assertNotIn("26.903.71938", notes)
         release.build(self.repo, "0.0.1", output)
         self.assertEqual(archive.read_bytes(), first_bytes)
 
@@ -63,11 +65,22 @@ class ReleaseTests(unittest.TestCase):
                 release.version_for(invalid)
         self.assertEqual(release.version_for("v0.0.2-rc.1"), "0.0.2-rc.1")
         with self.assertRaisesRegex(ValueError, "baseline"):
-            release.compatibility_section(self.document, "0.0.2")
+            release.compatibility_section(self.document, "99.0.0")
         with self.assertRaisesRegex(ValueError, "Codey"):
             release.compatibility_section(self.document.replace("| Codey |", "| Removed |"), "0.0.1")
         with self.assertRaises(subprocess.CalledProcessError):
             release.build(self.repo, "0.0.9", Path(self.temp.name) / "missing")
+
+    def test_history_selection_and_dates(self):
+        document = self.document.replace("`dc8def2`", "`0.0.2`")
+        section = release.compatibility_section(document, "0.0.2")
+        self.assertIn("`v0.10.8`", section)
+        self.assertIn("`0.10.9`", section)
+        self.assertNotIn("26.903.61454", section)
+        with self.assertRaisesRegex(ValueError, "date"):
+            release.compatibility_section(document.replace("| 2026-09-11 |", "| 2026-09-10 至 2026-09-11 |"), "0.0.2")
+        with self.assertRaisesRegex(ValueError, "Codey"):
+            release.compatibility_section(document.replace("`0.10.9`", "未核对"), "0.0.2")
 
 
 if __name__ == "__main__":

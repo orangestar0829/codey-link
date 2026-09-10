@@ -8,13 +8,15 @@ Status: implemented
 
 ## Decision
 
-[打包脚本](../../../../scripts/build_release.py) 固定目标标签对应的 commit，逐个读取明确清单中的 Git blob，生成 Windows ZIP、SHA-256 清单和发布说明。ZIP 使用固定时间戳，CMD 转为 CRLF，并附带 tag / commit 元数据。兼容性说明包含标签内的当前验证记录和完整功能边界，项目基线与标签不一致时停止。
+[打包脚本](../../../../scripts/build_release.py) 固定目标标签对应的 commit，逐个读取明确清单中的 Git blob，生成 Windows ZIP、SHA-256 清单和发布说明。ZIP 使用固定时间戳，CMD 转为 CRLF，并附带 tag / commit 元数据。兼容性说明选取标签内历史表中基线与 tag 匹配的行，并附带运行条件和验证边界，没有匹配基线时停止。历史日期使用单个提交日期，升级过程与逐项检查放入 Git 提交说明；发布前先更新本次历史记录的基线及项目版本，提交后再打 tag。
+
+旧标签保留原始文档；打包脚本继续支持其“当前验证记录”格式，补发旧版本无需修改或重打标签。
 
 [workflow](../../../../.github/workflows/release.yml) 支持 tag push 和手动输入已有标签，因此旧的 0.0.1 无需重打标签。它运行隔离打包测试及目标标签的策略测试、语法检查，创建含附件的草稿后再发布。已有同名 Release 不覆盖；失败草稿由维护者检查后删除重跑。
 
 ## Verification
 
-本地隔离 Git 仓库测试覆盖未提交改动不入包、非清单文件排除、CRLF、校验和、重复构建一致性、缺失标签以及基线和版本字段校验。另以现有 0.0.1 标签实际打包并核对版本说明。GitHub 托管 runner 与 Release 上传尚需 workflow 上线后验证；这些测试不扩大应用兼容承诺。
+本地隔离 Git 仓库测试覆盖未提交改动不入包、非清单文件排除、CRLF、校验和、重复构建一致性、缺失标签、历史行筛选、多组合匹配、单日期及版本字段校验。另以现有 0.0.1 标签实际打包，验证旧文档兼容读取。GitHub 托管 runner 与 Release 上传结果需要单独核对；这些测试不扩大应用兼容承诺。
 
 ## Alternatives considered
 

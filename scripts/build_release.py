@@ -1,6 +1,7 @@
 """从指定 Git 标签生成 Windows 源码运行包和兼容性说明，仅使用标准库。"""
 
 import argparse
+from datetime import date
 import hashlib
 import json
 import re
@@ -32,6 +33,41 @@ def version_for(tag):
 
 
 def compatibility_section(document, version):
+    # 历史 tag 保留旧文档结构，补发旧版时仍读取当时的验证记录。
+    if re.search(r"^## 当前验证记录\s*$", document, re.M):
+        return legacy_compatibility_section(document, version)
+    history = re.search(r"^## 历史记录\s*\n(.*?)(?=^## |\Z)", document, re.M | re.S)
+    if not history:
+        raise ValueError("Missing compatibility history")
+    lines = [line.strip() for line in history.group(1).splitlines() if line.strip().startswith("|")]
+    required = ["日期", "项目基线", "Codey", "Paseo daemon", "Codex CLI", "ChatGPT 桌面应用", "结论"]
+    if not lines or [cell.strip() for cell in lines[0].strip("|").split("|")] != required:
+        raise ValueError("Expected history columns: " + ", ".join(required))
+    selected = []
+    for line in lines[2:]:
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if len(cells) != len(required):
+            raise ValueError("Malformed compatibility history row")
+        if cells[1].strip("`") not in (version, "v" + version):
+            continue
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", cells[0]):
+            raise ValueError("History date must be a single commit date")
+        date.fromisoformat(cells[0])
+        for field, value in zip(required[2:6], cells[2:6]):
+            if not re.fullmatch(r"`v?\d+(?:\.\d+)+`", value):
+                raise ValueError(f"Missing compatibility version: {field}")
+        if not cells[6]:
+            raise ValueError("Missing compatibility scope")
+        selected.append(line)
+    if not selected:
+        raise ValueError("Tag version does not match a COMPATIBILITY.md history baseline")
+    boundary = re.search(r"^## 运行条件与验证边界\s*\n(.*?)(?=^## |\Z)", document, re.M | re.S)
+    if not boundary or not boundary.group(1).strip():
+        raise ValueError("Missing runtime requirements and verification boundaries")
+    return "### 验证历史\n\n" + "\n".join([lines[0], "| " + " | ".join(["---"] * len(required)) + " |", *selected]) + "\n\n### 运行条件与验证边界\n\n" + boundary.group(1).strip()
+
+
+def legacy_compatibility_section(document, version):
     match = re.search(r"^## 当前验证记录\s*\n(.*?)(?=^## |\Z)", document, re.M | re.S)
     if not match:
         raise ValueError("Missing current compatibility record")
