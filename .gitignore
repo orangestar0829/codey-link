@@ -2,7 +2,11 @@
 /.paseo-codey/
 /paseo-poc-home/
 /evidence/
-/.agents/
+/.agents/*
+!/.agents/notes/
+/.agents/notes/**
+!/.agents/notes/**/
+!/.agents/notes/**/*.md
 /FEASIBILITY.md
 /POC_MARKER.txt
 

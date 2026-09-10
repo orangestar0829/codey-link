@@ -239,6 +239,8 @@ node tools/launch_paseo_codey.mjs --port 17678
 
 项目源码布局：
 
+架构决策、方案取舍与验证结论见 [Agent Note](.agents/notes/implemented/architecture/2026-09-10-shared-codey-desktop-bridge.md)。提交的 note 使用仓库相对路径，并移除机器身份与真实会话标识；原始取证资料仍保留在被忽略的本地目录中。
+
 ```text
 .
 ├── 启动-Paseo-Codey.cmd
