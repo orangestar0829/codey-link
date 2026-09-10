@@ -259,6 +259,29 @@ node tools/launch_paseo_codey.mjs --port 17678
 
 界面提交时间、后端接纳时间和另一端显示时间可能不同。运行中追加的消息可能等待后端处理点；排查时应比较后端消息事件、桥接接收记录和客户端时间，而不是仅根据分钟级时间标签判断桥接延迟。
 
+## 下载与自动发布
+
+Release 中的 `codey-link-<版本>-windows.zip` 包含启动入口、运行源码、README、兼容性记录及记录 tag / commit 的 `release.json`。完整解压后按本文准备 Node.js、Paseo 和 Codey Desktop，再双击启动入口；这是源码运行包，不包含第三方程序。`SHA256SUMS.txt` 可用于核对下载文件。
+
+[Release workflow](.github/workflows/release.yml) 在推送版本标签（如 `0.0.2`、`v0.0.2` 或 `0.0.2-rc.1`）时执行测试、打包并发布。带后缀的版本标为预发布。每次打标签前：
+
+1. 更新 README 中的项目版本，以及 `COMPATIBILITY.md` 的当前项目基线、验证日期、组件版本和功能范围；保留历史记录。
+2. 提交后创建同版本 tag，并推送 tag。标签版本（去掉可选的 `v`）必须与兼容性文件的当前基线一致，否则打包失败。
+3. 在 Actions 的 Release 运行记录中检查结果，然后查看对应 Release 附件和适配说明。
+
+Release 说明直接摘录**目标标签内**的当前验证记录及功能矩阵，不会用主分支的新记录覆盖旧版本结论。打包采用明确文件清单，排除本机配置、配对凭据、会话、取证文件和辅助提取工具。
+
+已有 `0.0.1` 标签早于 workflow。workflow 推送到默认分支后，可在 **Actions → Release → Run workflow** 选择主分支，填写 `0.0.1` 补发；无需移动或重新创建标签。流程先创建草稿并上传附件，再公开发布；若已有同名 Release 则失败，避免覆盖资产。如果发布失败留下草稿，检查原因后删除该草稿再重跑，保留 Git tag。
+
+本地预览打包（需要 Python 3.9+ 和 Git，不连接运行中的服务）：
+
+```powershell
+python scripts/build_release.py --tag 0.0.1 --output dist
+python -m unittest discover -s tests -p 'test_release.py' -v
+```
+
+产物位于被 Git 忽略的 `dist/`。新增运行模块时同步维护打包脚本的 `FILES` 清单。
+
 ## 开发与验证
 
 项目源码布局：

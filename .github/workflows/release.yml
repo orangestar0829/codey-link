@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '[0-9]*.[0-9]*.[0-9]*'
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing version tag (for example 0.0.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Test packaging rules
+        run: python3 -m unittest discover -s tests -p 'test_release.py' -v
+      - name: Build from tag and test tagged source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/build_release.py --tag "$RELEASE_TAG" --output dist
+          git worktree add --detach "$RUNNER_TEMP/release-source" "refs/tags/$RELEASE_TAG"
+          node "$RUNNER_TEMP/release-source/tests/settings-policy-check.mjs"
+          for source in "$RUNNER_TEMP/release-source"/tools/*.mjs; do node --check "$source"; done
+          (cd dist && sha256sum --check SHA256SUMS.txt)
+      - name: Create draft with assets, then publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 已存在的 Release 会失败，避免覆盖已发布资产；失败遗留的草稿需检查后删除再重跑。
+          flags=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then flags=(--prerelease --latest=false); fi
+          gh release create "$RELEASE_TAG" dist/*.zip dist/SHA256SUMS.txt \
+            --verify-tag --draft --title "CodeyLink $RELEASE_TAG" \
+            --notes-file dist/release-notes.md "${flags[@]}"
+          gh release edit "$RELEASE_TAG" --draft=false "${flags[@]}"
