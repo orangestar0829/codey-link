@@ -25,7 +25,7 @@ Status: implemented
 
 ## Verification
 
-以下为 2026-09-10 在 Windows、Paseo 0.7.2 和 Codex CLI 0.153.4 上记录的本机验证结论，不代表对其他安装版本的保证：
+以下为 2026-09-10 在 Windows、Codey v0.10.8、ChatGPT（Powered by Codex & OWL）26.903.61454、Paseo 0.7.2 和 Codex CLI 0.153.4 上记录的本机验证结论，不代表对其他安装版本的保证。Codey 与 ChatGPT 桌面应用版本由使用者确认并补记；本文中的 Codex Desktop 指该应用提供的 Codex 界面。完整版本组合与功能边界见[版本兼容记录](../../../../COMPATIBILITY.md)：
 
 - 测试前后，原 Codey 后端进程身份保持不变，存活的 Codex 后端进程集合相同。
 - 外部客户端可以发送 turn、接收流式输出、调用实际 FastCtx read / grep，并观察具名子代理完成。
@@ -87,6 +87,14 @@ Desktop Fast 是全局选择，会联动专用 daemon 中打开且支持 Fast �
 
 以上未验证上游实际加速、计费结果及修复后的全部手机显示场景。权限选择器的完整双向同步不在这次实现范围内。
 
+## Compatibility records
+
+兼容声明按完整版本组合和功能范围记录，使用“已验证”“未验证”“部分兼容”“不兼容”四种状态。Codey、Codex Desktop、Codex CLI 后端及 Paseo 分别记录，避免上层应用版本相同而内部组件已变化时误判兼容。手机验证另外记录 App 版本及实际显示范围。
+
+对外以 ChatGPT“关于”界面的应用版本标识 Desktop，便于使用者核对；内部脚本的构建标识不作为版本表字段。代码对界面构建和原生状态的校验仍保留，应用版本说明不替代这些实现检查。
+
+[README](../../../../README.md) 展示当前验证基线，[COMPATIBILITY.md](../../../../COMPATIBILITY.md) 保存功能矩阵、历史组合和升级验证方式。项目版本独立编号，每次验证绑定实际 tag 或 commit；升级后没有测试记录的组合先标记为未验证，不将其等同于不兼容，也不承诺兼容全部更高版本。
+
 ## Alternatives considered
 
 - **直接连接现有 app-server WebSocket**：验证环境的后端实际使用 stdio，没有相应 WebSocket 监听入口；接口支持该传输方式，不意味着当前实例已经开放它。
@@ -94,6 +102,7 @@ Desktop Fast 是全局选择，会联动专用 daemon 中打开且支持 Fast �
 - **直接维护 Paseo 分支或修改安装包**：当前 command override 和专用加载钩子可以完成本次集成。将来正式化时仍可选择内置 transport 接口。
 - **多个客户端直接读取 stdout**：会争抢响应，缺少请求关联与生命周期所有权，因此通过 Desktop 已有请求管理器转发。
 - **只通过配置文件同步 Fast**：启动覆盖参数与 Desktop 原生选择状态不同步，实测不足以驱动界面和后续选择，因此同时处理原生状态。
+- **将最低组件版本描述成开放的兼容范围**：内部接口变化无法由版本大小关系保证，因此将运行最低要求与已验证版本组合分开记录。
 
 ## Consequences
 
