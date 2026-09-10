@@ -1,6 +1,6 @@
 # Codey ↔ Paseo Bridge
 
-项目版本：**`0.0.1`**，对应 Git 标签 `0.0.1`。
+项目版本：**`0.0.2`**，对应 Git 标签 `0.0.2`。
 
 **让 Paseo 网页和手机 App 接入当前 Codey 启动的 Codex 后端，继续同一会话。**
 
@@ -76,7 +76,7 @@ Paseo 的 Codex provider 启动轻量 JSONL 适配器。适配器通过本机 CD
 
 **本项目按完整版本组合验证，不声明兼容所有更高版本。** 运行要求中的最低 Node 版本不等于对任意 Codey、Paseo 或 Desktop 版本的兼容承诺。
 
-当前源码验证基线：`dc8def2`，验证记录提交日期为 2026-09-11。最新已发布标签仍为 `0.0.1`，不包含该修复。
+当前项目验证基线：`0.0.2`，验证记录提交日期为 2026-09-11。包含 `dc8def2` 的 ChatGPT 适配修复；旧 `0.0.1` 标签不包含该修复。
 
 | 组件 | 已记录版本 |
 | --- | --- |
@@ -276,7 +276,7 @@ Release 说明直接摘录**目标标签内**匹配 tag 的验证历史行及运
 本地预览打包（需要 Python 3.9+ 和 Git，不连接运行中的服务）：
 
 ```powershell
-python scripts/build_release.py --tag 0.0.1 --output dist
+python scripts/build_release.py --tag 0.0.2 --output dist
 python -m unittest discover -s tests -p 'test_release.py' -v
 ```
 
