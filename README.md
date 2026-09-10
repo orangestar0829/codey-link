@@ -253,7 +253,7 @@ node tools/launch_paseo_codey.mjs --port 17678
 
 ### Astra 没有 Fast，或应用升级后 Fast 同步报错
 
-确认连接的是本项目的专用 daemon。首次加载兼容钩子需要重启专用 daemon。若日志出现 `Desktop settings adapter needs review` 或模块结构不匹配，需要复核新版本的适配；不要通过移除校验强行宣称兼容。
+确认连接的是本项目的专用 daemon。首次加载兼容钩子需要重启专用 daemon。若日志出现 `Desktop settings adapter needs review` 或模块结构不匹配，需要复核新版本的适配；不要通过移除校验强行宣称兼容。当前代码在 Fast 状态不可用时暂停 Fast 同步，模型与推理强度仍按实际轮次同步；Fast 恢复后以 Desktop 状态重新建立基线。
 
 ### 运行中追加的消息在另一端较晚显示
 

@@ -6,12 +6,17 @@ const install = `async () => {
   const entry = document.scripts[0]?.src;
   const text = await fetch(entry).then(r => r.text());
   const asset = text.match(/app-initial-[a-f0-9]+\\.js/)?.[0];
-  if (asset !== 'app-initial-92cbfeba4f7c.js') throw new Error('Desktop settings adapter needs review for this Desktop build');
+  // 每个已验证构建使用自己的导出，不能只放行新资源名而沿用旧符号。
+  const managerExport = {
+    'app-initial-92cbfeba4f7c.js': '$4t',
+    'app-initial-f094ef01c64d.js': 'r3t',
+  }[asset];
+  if (!managerExport) throw new Error('Desktop settings adapter needs review for this Desktop build');
   const mod = await import(new URL(asset, entry).href);
-  if (typeof window.__codeyAppServerManagerFromReact !== 'function' || typeof mod.$4t !== 'function') throw new Error('Codey native scope discovery unavailable');
+  if (typeof window.__codeyAppServerManagerFromReact !== 'function' || typeof mod[managerExport] !== 'function') throw new Error('Codey native scope discovery unavailable');
   let scope;
   window.__codeyAppServerManagerFromReact((candidate, host) => {
-    const manager = mod.$4t(candidate, host);
+    const manager = mod[managerExport](candidate, host);
     if (typeof manager?.resumeConversation === 'function') scope = candidate;
     return manager;
   });

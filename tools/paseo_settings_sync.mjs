@@ -50,6 +50,65 @@ export class RolloutReader {
   }
 }
 
+// 一轮同步可独立验证；Fast 失败不阻断实际轮次的模型与推理强度。
+export async function syncSettingsPass({ agents, bridge, desktopSettings, client, reader, paths, cache, log }) {
+  let tier, fastAvailable = false, fastChanged = false;
+  try {
+    const config = (await bridge.request('config/read', { includeLayers: false })).config;
+    tier = await desktopSettings.tier(config);
+    const desktopChanged = !('tier' in cache) || cache.tier !== tier;
+    // Desktop changes win simultaneous conflicts. Only a user-observed feature delta
+    // writes back; initial mismatches and our own writes never enable paid tiers.
+    if (!desktopChanged) {
+      for (const agent of agents) {
+        const value = agent.features?.find(f => f.id === 'fast_mode')?.value;
+        const previous = cache.agents[agent.id];
+        if (typeof value !== 'boolean' || typeof previous?.fast !== 'boolean' || value === previous.fast || previous.model !== agent.model) continue;
+        tier = value ? 'priority' : 'default';
+        await bridge.request('config/batchWrite', { edits: [{
+          keyPath: config.profile ? `profiles.${config.profile}.service_tier` : 'service_tier',
+          value: tier, mergeStrategy: 'upsert',
+        }], filePath: null, expectedVersion: null, reloadUserConfig: true });
+        await desktopSettings.setTier(tier);
+        log('paseo-fast-to-desktop', { agentId: agent.id, tier });
+        break;
+      }
+    }
+    fastChanged = desktopChanged || tier !== cache.tier;
+    fastAvailable = true;
+  } catch (error) {
+    // Fast 状态不可用时不猜测、不写回；恢复后的首轮以 Desktop 状态重新建立基线。
+    delete cache.tier;
+    log('fast-sync-error', { message: error.message });
+  }
+  for (const agent of agents) {
+    try {
+      const id = agent.persistence?.sessionId || agent.runtimeInfo?.sessionId;
+      if (!id) continue;
+      const previous = cache.agents[agent.id] || {};
+      if (!paths.has(id)) {
+        const response = await bridge.request('thread/read', { threadId: id, includeTurns: false });
+        if (response.thread.path) paths.set(id, response.thread.path);
+      }
+      const current = paths.has(id) ? await reader.read(paths.get(id)) : null;
+      const patch = settingsPatch(previous.context, current, agent);
+      if (patch.model) await client.setAgentModel(agent.id, patch.model);
+      if (patch.effort) await client.setAgentThinkingOption(agent.id, patch.effort);
+      if (Object.keys(patch).length) log('desktop-to-paseo', { agentId: agent.id, ...patch });
+      let fast = agent.features?.find(f => f.id === 'fast_mode')?.value;
+      // Model changes can add/remove the native Fast feature.
+      if (patch.model) fast = (await client.fetchAgent(agent.id)).agent.features?.find(f => f.id === 'fast_mode')?.value;
+      if (fastAvailable && typeof fast === 'boolean' && (fastChanged || typeof previous.fast !== 'boolean' || patch.model) && fast !== isFast(tier)) {
+        await client.setAgentFeature(agent.id, 'fast_mode', isFast(tier));
+        fast = isFast(tier);
+        log('desktop-fast-to-paseo', { agentId: agent.id, fast });
+      }
+      cache.agents[agent.id] = { context: current, fast: fastAvailable ? fast : previous.fast, model: patch.model || agent.model };
+    } catch (error) { log('agent-error', { agentId: agent.id, message: error.message }); }
+  }
+  if (fastAvailable) cache.tier = tier;
+}
+
 async function main() {
   if (existsSync(lockPath)) {
     const lock = load(lockPath);
@@ -82,53 +141,7 @@ async function main() {
           agents.push(...page.entries.map(e => e.agent).filter(a => a.provider === 'codex' && !a.archivedAt));
           cursor = page.pageInfo?.hasMore ? page.pageInfo.nextCursor : null;
         } while (cursor);
-        const config = (await bridge.request('config/read', { includeLayers: false })).config;
-        let tier = await desktopSettings.tier(config);
-        const desktopChanged = !('tier' in cache) || cache.tier !== tier;
-        // Desktop changes win simultaneous conflicts. Only a user-observed feature delta
-        // writes back; initial mismatches and our own writes never enable paid tiers.
-        if (!desktopChanged) {
-          for (const agent of agents) {
-            const value = agent.features?.find(f => f.id === 'fast_mode')?.value;
-            const previous = cache.agents[agent.id];
-            if (typeof value !== 'boolean' || typeof previous?.fast !== 'boolean' || value === previous.fast || previous.model !== agent.model) continue;
-            tier = value ? 'priority' : 'default';
-            await bridge.request('config/batchWrite', { edits: [{
-              keyPath: config.profile ? `profiles.${config.profile}.service_tier` : 'service_tier',
-              value: tier, mergeStrategy: 'upsert',
-            }], filePath: null, expectedVersion: null, reloadUserConfig: true });
-            await desktopSettings.setTier(tier);
-            log('paseo-fast-to-desktop', { agentId: agent.id, tier });
-            break;
-          }
-        }
-        const fastChanged = desktopChanged || tier !== cache.tier;
-        for (const agent of agents) {
-          try {
-            const id = agent.persistence?.sessionId || agent.runtimeInfo?.sessionId;
-            if (!id) continue;
-            const previous = cache.agents[agent.id] || {};
-            if (!paths.has(id)) {
-              const response = await bridge.request('thread/read', { threadId: id, includeTurns: false });
-              if (response.thread.path) paths.set(id, response.thread.path);
-            }
-            const current = paths.has(id) ? await reader.read(paths.get(id)) : null;
-            const patch = settingsPatch(previous.context, current, agent);
-            if (patch.model) await client.setAgentModel(agent.id, patch.model);
-            if (patch.effort) await client.setAgentThinkingOption(agent.id, patch.effort);
-            if (Object.keys(patch).length) log('desktop-to-paseo', { agentId: agent.id, ...patch });
-            let fast = agent.features?.find(f => f.id === 'fast_mode')?.value;
-            // Model changes can add/remove the native Fast feature.
-            if (patch.model) fast = (await client.fetchAgent(agent.id)).agent.features?.find(f => f.id === 'fast_mode')?.value;
-            if (typeof fast === 'boolean' && (fastChanged || typeof previous.fast !== 'boolean' || patch.model) && fast !== isFast(tier)) {
-              await client.setAgentFeature(agent.id, 'fast_mode', isFast(tier));
-              fast = isFast(tier);
-              log('desktop-fast-to-paseo', { agentId: agent.id, fast });
-            }
-            cache.agents[agent.id] = { context: current, fast, model: patch.model || agent.model };
-          } catch (error) { log('agent-error', { agentId: agent.id, message: error.message }); }
-        }
-        cache.tier = tier;
+        await syncSettingsPass({ agents, bridge, desktopSettings, client, reader, paths, cache, log });
         save(cachePath, cache);
       } catch (error) { log('poll-error', { message: error.message }); }
       if (process.argv.includes('--once')) break;
