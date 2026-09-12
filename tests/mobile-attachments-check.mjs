@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict';
+import {mkdtemp,mkdir,writeFile,stat,rm} from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import {readAsset} from '../paseo-plugin/server/assets.ts';
+import {parseCard} from '../paseo-plugin/shared/parse.ts';
+const root=await mkdtemp(path.join(os.tmpdir(),'codey-mobile-assets-'));
+try {
+  const key='a'.repeat(64),cache=path.join(root,'image-previews'),source=path.join(root,'source.png');
+  await mkdir(cache);
+  const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=','base64');
+  await writeFile(source,bytes);await writeFile(path.join(cache,key+'.jpg'),bytes);
+  const info=await stat(source);
+  await writeFile(path.join(cache,key+'.json'),JSON.stringify({version:1,source,sourceSize:info.size,sourceMtimeMs:info.mtimeMs,width:1,height:1,left:0,top:0,imageWidth:1,imageHeight:1,originalWidth:1,originalHeight:1}));
+  const thumbnail=await readAsset({key,original:false},root);
+  const original=await readAsset({key,original:true},root);
+  assert.equal(original.dataUri,thumbnail.dataUri);
+  await assert.rejects(()=>readAsset({key:'../source',original:true},root),/无效/);
+  await assert.rejects(()=>readAsset({key:'b'.repeat(64),original:false},root),/索引已失效/);
+  await assert.rejects(()=>readAsset({key,original:true},root,16),/超过查看限制/);
+  const text=`**用户附件**\n\n![a（缩略图）](file:///fixture/image-previews/${key}.jpg)\n\n[查看原图](file:///fixture/a.png)（0.01 MiB）`;
+  const item={messageId:'codey-link-user-images-a',text};
+  assert.equal(parseCard(item).images[0].key,key);
+  assert.equal(parseCard({...item,messageId:'ordinary'}),undefined);
+  assert.equal(parseCard({...item,text:text+'\n[打开文件](file:///fixture/a.txt)'}),undefined);
+  const [heading,image,link]=text.split('\n\n');
+  assert.deepEqual(parseCard({...item,text:heading}).images,[]);
+  assert.equal(parseCard({...item,text:image+'\n'+link}).images[0].key,key);
+  assert.equal(parseCard({...item,text:image}).images[0].key,key);
+  assert.equal(parseCard({...item,text:link}),undefined);
+  assert.equal(parseCard({...item,text:image.replace('/image-previews/','/other/') }),undefined);
+  assert.equal(parseCard({...item,text:'a：缩略图生成失败，未自动加载原图。'+link}),undefined);
+  assert.equal(parseCard({...item,text:'[打开文件 · a.txt](file:///fixture/a.txt)（1 KiB）'}),undefined);
+  assert.equal(parseCard({text:image}),undefined);
+  await writeFile(source,'changed');
+  await assert.rejects(()=>readAsset({key,original:true},root),/变更或失效/);
+  console.log('Mobile attachment file guards and fallback checks passed');
+} finally {await rm(root,{recursive:true,force:true});}

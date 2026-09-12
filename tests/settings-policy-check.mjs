@@ -8,6 +8,7 @@ import './desktop-bridge-check.mjs';
 import './image-preview-check.mjs';
 import './turn-identification-check.mjs';
 import './paseo-version-hooks-check.mjs';
+import './mobile-attachments-check.mjs';
 
 const first = { turnId: 'a', model: 'gpt-6-astra', effort: 'medium' };
 const pending = { model: 'gpt-5.6-luna', thinkingOptionId: 'high' };
@@ -74,3 +75,4 @@ assert.deepEqual(calls, ['config/read', 'fast']);
 assert.equal(cache.tier, 'default');
 assert.equal(agent.model, pending.model);
 console.log('settings policy, incremental rollout and Fast failure isolation checks passed');
+import './prompt-optimization-check.mjs';
