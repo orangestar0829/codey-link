@@ -45,12 +45,15 @@ export async function loadDesktopMessageDecoder() {
   const entry = document.scripts[0]?.src;
   const source = await fetch(entry).then(response => response.text());
   const asset = source.match(/app-initial-[a-f0-9]+\.js/)?.[0];
-  const exportName = {
-    'app-initial-92cbfeba4f7c.js': 'ymn',
-    'app-initial-f094ef01c64d.js': 'Cmn',
+  // 新构建将可信消息解码器拆为独立模块，必须复用原生模块里的分片缓存。
+  const decoder = {
+    'app-initial-92cbfeba4f7c.js': [asset, 'ymn'],
+    'app-initial-f094ef01c64d.js': [asset, 'Cmn'],
+    'app-initial-d9bed9d614d8.js': ['get-trusted-message-for-view-eee599500f15.js', 't'],
   }[asset];
-  if (!exportName) throw new Error('Desktop message decoder needs review for this Desktop build');
-  const module = await import(new URL(asset, entry).href);
+  if (!decoder || !source.includes(decoder[0])) throw new Error('Desktop message decoder needs review for this Desktop build');
+  const [decoderAsset, exportName] = decoder;
+  const module = await import(new URL(decoderAsset, entry).href);
   if (typeof module[exportName] !== 'function') throw new Error('Desktop native message decoder unavailable');
   return module[exportName];
 }

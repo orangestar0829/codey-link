@@ -10,6 +10,7 @@ const install = `async () => {
   const managerExport = {
     'app-initial-92cbfeba4f7c.js': '$4t',
     'app-initial-f094ef01c64d.js': 'r3t',
+    'app-initial-d9bed9d614d8.js': 'Q3t',
   }[asset];
   if (!managerExport) throw new Error('Desktop settings adapter needs review for this Desktop build');
   const mod = await import(new URL(asset, entry).href);
