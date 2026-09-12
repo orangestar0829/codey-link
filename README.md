@@ -1,12 +1,14 @@
 # Codey ↔ Paseo Bridge
 
-项目版本：**`0.0.2`**，对应 Git 标签 `0.0.2`。
+项目版本：**`0.0.3`**，对应 Git 标签 `0.0.3`。
 
 **让 Paseo 网页和手机 App 接入当前 Codey 启动的 Codex 后端，继续同一会话。**
 
 本项目通过本机 Codex Desktop 已有的连接转发请求与事件，保留后端提供的 FastCtx、Codey 子代理及运行时配置，并补充模型、推理强度和 Fast 状态同步。电脑上的 Codey / Codex Desktop 需要持续运行。
 
 > 当前定位：Windows 本机集成原型。已在指定版本组合上完成验证，依赖 Desktop 内部接口，升级应用后需要重新核对兼容性。
+
+上游项目：[Codey](https://github.com/SuperGness/codey) · [Paseo](https://github.com/getpaseo/paseo)。
 
 ## 目录
 
@@ -16,6 +18,8 @@
 - [版本兼容性](#版本兼容性)
 - [快速开始](#快速开始)
 - [手机连接与历史会话](#手机连接与历史会话)
+- [图片预览配置](#图片预览配置)
+- [CodeyLink 插件](#codeylink-插件)
 - [设置同步规则](#设置同步规则)
 - [启动参数](#启动参数)
 - [运行数据与隐私](#运行数据与隐私)
@@ -32,6 +36,7 @@
 | 历史会话 | 通过 Paseo 导入已有 Codex 会话，恢复后订阅后续事件 |
 | 模型与推理强度 | 按会话同步实际轮次使用的设置 |
 | Fast | 同步 Desktop 原生选择状态，并根据后端模型目录补齐支持的模型开关 |
+| CodeyLink 插件（可选） | 为网页和手机提供紧凑图片卡片、按需加载原图和 Codey 提示词优化面板 |
 | 独立运行目录 | 专用 daemon 使用项目内的 `.paseo-codey/` |
 | 启停管理 | 提供双击入口；停止专用 daemon 时保留 Codey 后端 |
 
@@ -74,24 +79,7 @@ Paseo 的 Codex provider 启动轻量 JSONL 适配器。适配器通过本机 CD
 
 ## 版本兼容性
 
-**本项目按完整版本组合验证，不声明兼容所有更高版本。** 运行要求中的最低 Node 版本不等于对任意 Codey、Paseo 或 Desktop 版本的兼容承诺。
-
-当前项目验证基线：`0.0.2`，验证记录提交日期为 2026-09-11。包含 `dc8def2` 的 ChatGPT 适配修复；旧 `0.0.1` 标签不包含该修复。
-
-| 组件 | 已记录版本 |
-| --- | --- |
-| Codey | `0.10.9`，运行进程文件版本核对 |
-| Paseo 桌面程序 / daemon | `0.7.2` |
-| Codex CLI 后端 | `0.153.4` |
-| 桌面应用 | ChatGPT（Powered by Codex & OWL）`26.903.71938`，由使用者确认，界面构建核对未变 |
-
-本文中的 Codex Desktop 指上述 ChatGPT 桌面应用提供的 Codex 界面。对外兼容记录使用 ChatGPT 应用版本；它与 Codex CLI 后端版本分别记录，不能互相替代。
-
-该组合已验证基础桥接、客户端重连与历史读取、模型与推理强度传递，以及原生 Fast 开关双向同步。本组合未重复手机测试；手机 Fast 同步的用户验收对应此前的 Codey `0.10.8` 组合。各组合的最终结论见兼容性历史表，逐项测试过程见 Git 提交说明。
-
-新版本默认标记为 **未验证**，不直接视为不兼容。若只有部分功能因升级失效，标记为 **部分兼容** 并列明影响；确认核心连接不可用后才标记为 **不兼容**。
-
-完整功能矩阵、历史组合和升级验证方式见 [COMPATIBILITY.md](COMPATIBILITY.md)。项目自身的版本号独立管理，每个 Release 应注明实际验证的组合；Codey 或 Paseo 升级不会自动扩大已有验证范围。
+适配版本、验证历史及功能边界统一见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 ## 快速开始
 
@@ -165,6 +153,78 @@ node tools/launch_paseo_codey.mjs --relay
 
 共享后端不会自动让所有历史出现在 Paseo 列表里。导入建立会话关联；恢复时，桥接会在读取线程和发送请求前注册事件订阅，以接收后续输出。
 
+## 图片预览配置
+
+复制项目根目录的 `.env.example` 为 `.env`，修改后停止并重新启动专用 daemon。启动时按「环境变量 > `.env` > 默认值」解析配置；非法数值会报错。`.env` 不进入 Git 或发布包，发布包只包含 `.env.example`。
+
+| 配置 | 默认值 | 含义 |
+| --- | --- | --- |
+| `CODEY_LINK_IMAGE_MAX_MIB` | 10 | 单张图片自动预览大小上限 |
+| `CODEY_LINK_MESSAGE_IMAGES_MAX_MIB` | 20 | 每条消息自动预览总大小上限 |
+| `CODEY_LINK_MESSAGE_IMAGES_MAX_COUNT` | 8 | 每条消息自动预览数量上限 |
+| `CODEY_LINK_IMAGE_AUTOLOAD_MAX_COUNT` | 8 | 每次历史加载的图片自动预览数量预算 |
+| `CODEY_LINK_IMAGE_AUTOLOAD_MAX_MIB` | 20 | 每次历史加载的图片自动预览总大小预算 |
+| `CODEY_LINK_IMAGE_PREPARE_CONCURRENCY` | 2 | 图片元数据检查和缩略图生成并发数（1–16） |
+| `CODEY_LINK_IMAGE_THUMBNAIL_EDGE` | 480 | 缩略图画布宽度（64–1024 像素） |
+| `CODEY_LINK_IMAGE_THUMBNAIL_HEIGHT` | 240 | 缩略图画布高度上限（64–1024 像素，实际不超过宽度） |
+| `CODEY_LINK_IMAGE_THUMBNAIL_QUALITY` | 70 | JPEG 缩略图质量（30–90） |
+| `CODEY_LINK_IMAGE_OPEN_MAX_MIB` | 20 | 手机图片插件主动打开原图的上限（1–1024 MiB） |
+
+大小单位为 MiB，预算按原图文件大小检查。数量或大小限制设为 0 可关闭对应自动预览。预算从最新消息向前分配；超限图片保留文件名、大小、原因和文件入口，失效文件明确提示。新消息使用独立的预览预算，刷新历史时重新按最新顺序分配。
+
+入选图片在电脑上通过 Windows PowerShell / System.Drawing 生成 JPEG 缩略图，历史只传缩略图引用。兼容展示的默认画布为 480×240，原图等比居中、完整保留，周围补深灰背景；避免手机把竖长图按消息宽度撑成整屏。想更矮可将 `CODEY_LINK_IMAGE_THUMBNAIL_HEIGHT` 改为 160，修改后重启专用 daemon。画布比例控制显示高度，单独降低分辨率不能限制 App 的显示尺寸。
+
+单张缩略图硬上限 256 KiB，因此默认 8 张最多约 2 MiB 图片数据；只有点击「查看原图」才由客户端读取原始图片。默认预览不传原图 Base64，生成失败也不会自动退回加载原图。点击缩略图本身会使用 App 原生查看器放大缩略图；查看完整分辨率请使用旁边的「查看原图」。缩略图不改变原始文件，透明背景在预览中显示为白色，动画预览只显示静态帧。
+
+缩略图缓存在 `.paseo-codey/image-previews/`，文件标识包含原图大小、修改时间和缩略图参数。同名 JSON 索引记录本地原图位置和预览裁切尺寸，仅供专用服务读取，不随发布包分发。再次进入会话可复用缓存；缓存超过 128 MiB 时优先回收旧图片及索引，当前生成批次保留。系统清理原图后，即使缓存还在也会提示原图失效。
+
+Paseo 现有用户消息协议不支持历史图片附件，因此预览在原消息后以标有「用户附件」的图片块展示。Codex 自动生成、且确实对应附件的路径说明会在 Paseo 展示层简化；原始消息和发送给模型的内容保持不变。图片缩略图仅支持后端明确标注的 `localImage`。
+
+普通文件识别 Codex 的 `Files mentioned/pasted by the user` 附件包装及 Paseo 独立的 `Uploaded file` 文本块，只展示文件名、大小和「打开文件」入口。会话加载时只检查文件元数据，不读取文件内容、不解压；正文里的普通文件路径保持原样。点击后由 Paseo 原生文件页处理，文本可预览；压缩包等二进制文件的预览与下载能力由 App 决定，文件链接不等于专用下载按钮。
+
+以上为未启用插件时的兼容展示。启用 [CodeyLink 插件](#codeylink-插件) 后，可识别的图片附件会显示为紧凑卡片，点击卡片直接按需读取原图。
+
+专用 daemon 会为新普通发送传递客户端消息 ID，帮助原生 App 将后端消息与仍在本机的附件卡片准确关联。旧消息不猜配或补写 ID；清空本地状态、换设备后仍需兼容预览。此修复不等于完整的原生历史附件恢复。
+
+兼容展示的图片下载、滚动加载、文件入口行为由 Paseo App 控制；桥接无法配置 App 的网络下载并发，因此使用 `IMAGE_PREPARE_CONCURRENCY` 而非下载并发选项。自动预览限制不是下载访问控制；`IMAGE_OPEN_MAX_MIB` 只约束插件主动读取原图，不改变 Paseo 原生文件入口。
+
+## CodeyLink 插件
+
+仓库附带可选插件 `codey-link-mobile`，通过 Paseo 官方插件接口在网页和手机端加载。插件复用当前专用 daemon 与 Codey 后端，安装后可使用以下功能：
+
+| 功能 | 使用方式 |
+| --- | --- |
+| 图片卡片 | 将桥接生成的图片附件显示为靠右排列的 84×84 缩略图，去除预览画布的填充部分 |
+| 查看原图 | 点击卡片后才从电脑读取原图；支持长图滚动和「放大 / 缩小」，关闭后释放插件保存的原图数据 |
+| 提示词优化 | 输入 `/optimize 原始需求`，或从命令中心打开「Codey 提示词优化」；沿用电脑 Codey 的优化配置，结果可编辑、复制或确认发送 |
+
+### 安装与启用
+
+1. 按 [COMPATIBILITY.md](COMPATIBILITY.md) 准备支持插件的电脑 daemon 和手机 App，并启动本项目的专用服务。
+2. 在项目根目录执行：
+
+   ```powershell
+   node tools/paseo_mobile_plugin.mjs install
+   ```
+
+3. 在这套服务的 **Settings → Plugins** 中开启 **Enable plugins** 和 **codey-link-mobile**。全局开关会同时启动其他已启用的插件。
+4. 在网页或手机端重新进入会话，即可使用图片卡片和提示词优化入口。
+
+安装时引用当前仓库的插件源码；移动仓库后需要重新安装。修改插件后可重载，也可查看状态或禁用：
+
+```powershell
+node tools/paseo_mobile_plugin.mjs status
+node tools/paseo_mobile_plugin.mjs reload
+node tools/paseo_mobile_plugin.mjs disable
+```
+
+### 使用边界
+
+- 图片卡片仍紧随原用户消息，尚未合入原生用户气泡；同时处理完整历史和实时分段，不重写历史消息。原图目前使用插件内的查看面板。
+- 图片沿用 [预览配置](#图片预览配置) 中的最新消息优先预算，主动读取原图受 `CODEY_LINK_IMAGE_OPEN_MAX_MIB` 限制。普通文件、超限图片和无法识别的附件保留原有文件入口或错误说明。
+- 提示词优化只处理文本，点击「确认发送」后才发到打开面板时的原会话。插件无法读取或替换主输入框，也不能接收其中的附件；需要附图或文件时，将优化结果复制回原消息框再发送。
+- 禁用插件后恢复兼容图片展示，并移除提示词优化入口。详细配置、临时结果保留规则和附件处理边界见 [插件说明](paseo-plugin/README.md)。
+
 ## 设置同步规则
 
 | 设置 | 同步时机 | 作用范围 |
@@ -179,7 +239,7 @@ node tools/launch_paseo_codey.mjs --relay
 
 Fast 使用 Desktop 的原生选择状态，因为启动参数可能覆盖 `config/read` 返回的 `service_tier`。Paseo 切换 Fast 时，同步进程会同时更新 Codex 对应配置和 Desktop 原生选择。同一次检查发现两端同时改 Fast 时，优先采用 Desktop 的变化。
 
-Paseo 0.7.2 的 Fast 支持判断使用固定模型前缀。专用 daemon 的加载钩子改用当前后端 `model/list` 返回的支持目录，使目录中支持 Fast 的 Astra 等模型显示原生开关；不会修改原 Paseo 安装包。
+专用 daemon 的加载钩子支持已识别的模型前缀和集合两种 Fast 判断形式，改用当前后端 `model/list` 返回的支持目录，使目录中支持 Fast 的模型显示原生开关；不会修改原 Paseo 安装包。遇到未知模块结构仍会拒绝加载，要求重新核验。
 
 ## 启动参数
 
@@ -196,6 +256,8 @@ Paseo 0.7.2 的 Fast 支持判断使用固定模型前缀。专用 daemon 的加
 | `--stop` | 停止专用 daemon |
 | `--help` | 显示简要帮助 |
 | `--no-pause` | CMD 入口退出时不等待按键，必须放在第一个参数位置 |
+
+启动器优先使用 `--paseo-exe` 指定的运行时，其次复用 `connection.json` 记录的程序位置，再检测已打开的 Paseo。升级后程序位置变化时，先停止专用服务，再用 `--paseo-exe` 指向新版；此后的双击启动会沿用该位置。
 
 ```powershell
 # 启动但不打开浏览器
@@ -261,7 +323,7 @@ node tools/launch_paseo_codey.mjs --port 17678
 
 ## 下载与自动发布
 
-Release 中的 `codey-link-<版本>-windows.zip` 包含启动入口、运行源码、README、兼容性记录及记录 tag / commit 的 `release.json`。完整解压后按本文准备 Node.js、Paseo 和 Codey Desktop，再双击启动入口；这是源码运行包，不包含第三方程序。`SHA256SUMS.txt` 可用于核对下载文件。
+Release 中的 `codey-link-<版本>-windows.zip` 包含启动入口、运行源码、README、兼容性记录及记录 tag / commit 的 `release.json`；包含图片插件的标签也会打包插件源码和安装入口，旧标签保持原内容。完整解压后按本文准备 Node.js、Paseo 和 Codey Desktop，再双击启动入口；这是源码运行包，不包含第三方程序。`SHA256SUMS.txt` 可用于核对下载文件。
 
 [Release workflow](.github/workflows/release.yml) 在推送版本标签（如 `0.0.2`、`v0.0.2` 或 `0.0.2-rc.1`）时执行测试、打包并发布。带后缀的版本标为预发布。每次打标签前：
 
@@ -276,7 +338,7 @@ Release 说明直接摘录**目标标签内**匹配 tag 的验证历史行及运
 本地预览打包（需要 Python 3.9+ 和 Git，不连接运行中的服务）：
 
 ```powershell
-python scripts/build_release.py --tag 0.0.2 --output dist
+python scripts/build_release.py --tag 0.0.3 --output dist
 python -m unittest discover -s tests -p 'test_release.py' -v
 ```
 
@@ -302,7 +364,8 @@ python -m unittest discover -s tests -p 'test_release.py' -v
 │   ├── desktop_settings.mjs     # Desktop 原生 Fast 状态适配
 │   ├── paseo_native_client.mjs  # 原生 Paseo 设置客户端
 │   ├── paseo_compat.mjs         # Fast 模型目录兼容钩子
-│   └── asar_inspect.py          # 只读提取安装包指定文件
+│   └── paseo_mobile_plugin.mjs  # 专用服务手机插件管理
+├── paseo-plugin/               # 图片卡片、按需原图、Codey 提示词优化
 └── tests/
     └── settings-policy-check.mjs
 ```
@@ -313,7 +376,7 @@ python -m unittest discover -s tests -p 'test_release.py' -v
 node tests/settings-policy-check.mjs
 ```
 
-测试覆盖实际轮次变化、未发送选择保护、Fast 标识判断，以及轮次文件的增量读取和截断处理。安装包检查辅助工具使用 Python；普通启动不依赖 Python。
+测试覆盖实际轮次变化、未发送选择保护、Fast 标识判断、图片读取边界，以及轮次文件的增量读取和截断处理。插件相关测试使用 Node.js 22.18+ 的 TypeScript 类型擦除支持；普通启动不依赖 Python。
 
 已进行本机共享后端、历史恢复、模型与强度双向传递、原生 Fast 开关双向同步的集成验证。私有会话记录不随仓库分发；策略测试不能替代手机实际显示、上游加速效果和其他应用版本的验收。
 
