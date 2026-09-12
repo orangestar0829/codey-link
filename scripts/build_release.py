@@ -10,14 +10,25 @@ import zipfile
 from pathlib import Path
 
 
+PLUGIN_FILES = (
+    "tools/paseo_mobile_plugin.mjs", "paseo-plugin/README.md", "paseo-plugin/paseo-plugin.json",
+    "paseo-plugin/index.client.tsx", "paseo-plugin/index.server.ts", "paseo-plugin/client/cards.tsx",
+    "paseo-plugin/server/assets.ts", "paseo-plugin/shared/contracts.ts", "paseo-plugin/shared/parse.ts",
+    "paseo-plugin/client/prompt-controller.mjs", "paseo-plugin/client/prompt-panel.tsx",
+    "paseo-plugin/server/codey-prompt.mjs", "paseo-plugin/server/prompt-jobs.mjs",
+    "paseo-plugin/server/desktop-rpc.mjs",
+)
+
+
 FILES = (
-    "README.md", "COMPATIBILITY.md",
+    "README.md", "COMPATIBILITY.md", ".env.example", "tools/create_image_thumbnail.ps1",
     "启动-Paseo-Codey.cmd", "停止-Paseo-Codey.cmd",
     *(f"tools/{name}.mjs" for name in (
         "cdp", "desktop_bridge", "desktop_settings", "launch_paseo_codey",
         "paseo_compat", "paseo_desktop_shim", "paseo_native_client",
-        "paseo_settings_sync", "settings_sync_policy",
+        "paseo_settings_sync", "settings_sync_policy", "image_preview", "image_thumbnails",
     )),
+    *PLUGIN_FILES,
 )
 
 
@@ -54,6 +65,13 @@ def compatibility_section(document, version):
             raise ValueError("History date must be a single commit date")
         date.fromisoformat(cells[0])
         for field, value in zip(required[2:6], cells[2:6]):
+            # Codey 支持历史表中的闭区间写法，原样保留到 Release 说明。
+            interval = re.fullmatch(r"`\[(\d+\.\d+\.\d+),(\d+\.\d+\.\d+)\]`", value) if field == "Codey" else None
+            if interval:
+                lower, upper = (tuple(map(int, endpoint.split("."))) for endpoint in interval.groups())
+                if lower > upper:
+                    raise ValueError("Invalid Codey version range: lower bound exceeds upper bound")
+                continue
             if not re.fullmatch(r"`v?\d+(?:\.\d+)+`", value):
                 raise ValueError(f"Missing compatibility version: {field}")
         if not cells[6]:
@@ -89,7 +107,16 @@ def build(repo, tag, output):
     ref = f"refs/tags/{tag}"
     commit = git(repo, "rev-parse", "--verify", f"{ref}^{{commit}}").decode().strip()
     # 固定 commit 后读取，避免工作区改动或标签变化混入包中。
-    contents = {name: git(repo, "show", f"{commit}:{name}") for name in FILES}
+    # 新增图片模块只随含该功能的标签打包，仍允许重建旧标签。
+    tree = set(git(repo, "ls-tree", "-r", "--name-only", commit).decode("utf-8").splitlines())
+    image_files = {".env.example", "tools/image_preview.mjs", "tools/image_thumbnails.mjs", "tools/create_image_thumbnail.ps1"}
+    optional_files = image_files | set(PLUGIN_FILES)
+    selected_files = [name for name in FILES if name not in optional_files or name in tree]
+    contents = {name: git(repo, "show", f"{commit}:{name}") for name in selected_files}
+    if b"image_preview.mjs" in contents["tools/launch_paseo_codey.mjs"] and not image_files.issubset(contents):
+        raise ValueError("Image preview runtime or example configuration missing from tag")
+    if set(PLUGIN_FILES).intersection(contents) and not set(PLUGIN_FILES).issubset(contents):
+        raise ValueError("Mobile attachment plugin files missing from tag")
     section = compatibility_section(contents["COMPATIBILITY.md"].decode("utf-8-sig"), version)
     metadata = {"project": "CodeyLink", "version": version, "tag": tag,
                 "commit": commit, "platform": "windows", "package_type": "source-runtime"}

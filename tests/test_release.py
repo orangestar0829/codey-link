@@ -71,16 +71,54 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(subprocess.CalledProcessError):
             release.build(self.repo, "0.0.9", Path(self.temp.name) / "missing")
 
+    def test_legacy_package_and_missing_image_module(self):
+        self.git("rm", "--", ".env.example", "tools/image_preview.mjs", "tools/image_thumbnails.mjs", "tools/create_image_thumbnail.ps1", *release.PLUGIN_FILES)
+        self.git("-c", "user.name=Release Test", "-c", "user.email=test@example.invalid",
+                 "-c", "commit.gpgsign=false", "commit", "-qm", "legacy fixture")
+        self.git("tag", "0.0.2")
+        archive = release.build(self.repo, "0.0.2", Path(self.temp.name) / "legacy")
+        with zipfile.ZipFile(archive) as bundle:
+            self.assertFalse(any(name.endswith("image_preview.mjs") for name in bundle.namelist()))
+            self.assertFalse(any("paseo-plugin/" in name for name in bundle.namelist()))
+        (self.repo / "tools/launch_paseo_codey.mjs").write_text("import './image_preview.mjs';\n", encoding="utf-8")
+        self.git("add", "tools/launch_paseo_codey.mjs")
+        self.git("-c", "user.name=Release Test", "-c", "user.email=test@example.invalid",
+                 "-c", "commit.gpgsign=false", "commit", "-qm", "incomplete runtime")
+        self.git("tag", "0.0.3")
+        with self.assertRaisesRegex(ValueError, "Image preview runtime"):
+            release.build(self.repo, "0.0.3", Path(self.temp.name) / "incomplete")
+
+    def test_incomplete_plugin_is_not_published(self):
+        self.git("rm", "--", "paseo-plugin/server/assets.ts")
+        self.git("-c", "user.name=Release Test", "-c", "user.email=test@example.invalid",
+                 "-c", "commit.gpgsign=false", "commit", "-qm", "incomplete plugin")
+        self.git("tag", "0.0.2")
+        with self.assertRaisesRegex(ValueError, "Mobile attachment plugin files"):
+            release.build(self.repo, "0.0.2", Path(self.temp.name) / "incomplete-plugin")
+
     def test_history_selection_and_dates(self):
-        document = self.document.replace("`dc8def2`", "`0.0.2`")
+        # 固定区间用例，不要求工作区兼容文档与代码在同一次提交更新。
+        document = """## 运行条件与验证边界
+
+Windows；测试只覆盖明确列出的版本组合。
+
+## 历史记录
+
+| 日期 | 项目基线 | Codey | Paseo daemon | Codex CLI | ChatGPT 桌面应用 | 结论 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2026-09-10 | `0.0.1` | `0.10.8` | `0.7.2` | `0.153.4` | `26.903.61454` | 已通过 |
+| 2026-09-11 | `0.0.2` | `[0.10.8,1.0.0]` | `0.7.2` | `0.153.4` | `26.903.71938` | 已通过 |
+"""
         section = release.compatibility_section(document, "0.0.2")
-        self.assertIn("`v0.10.8`", section)
-        self.assertIn("`0.10.9`", section)
+        self.assertIn("`[0.10.8,1.0.0]`", section)
         self.assertNotIn("26.903.61454", section)
         with self.assertRaisesRegex(ValueError, "date"):
             release.compatibility_section(document.replace("| 2026-09-11 |", "| 2026-09-10 至 2026-09-11 |"), "0.0.2")
         with self.assertRaisesRegex(ValueError, "Codey"):
-            release.compatibility_section(document.replace("`0.10.9`", "未核对"), "0.0.2")
+            release.compatibility_section(document.replace("`[0.10.8,1.0.0]`", "未核对"), "0.0.2")
+        for invalid in ("`[1.0.0,0.10.8]`", "`[0.10.8,]`"):
+            with self.subTest(interval=invalid), self.assertRaisesRegex(ValueError, "Codey"):
+                release.compatibility_section(document.replace("`[0.10.8,1.0.0]`", invalid), "0.0.2")
 
 
 if __name__ == "__main__":
