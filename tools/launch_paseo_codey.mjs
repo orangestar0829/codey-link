@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { DesktopBridge } from './desktop_bridge.mjs';
+import { readImageConfig, imageConfigEnv } from './image_preview.mjs';
 
 const exec = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -47,8 +48,10 @@ $items=Get-CimInstance Win32_Process | Where-Object {$_.Name -in @('Codey.exe','
   return JSON.parse(stdout.replace(/^\uFEFF/, ''));
 }
 function resolvePaseo(processes, oldState) {
-  const candidates = [options['--paseo-exe'], ...processes.filter(p => p.name.toLowerCase() === 'paseo.exe').map(p => p.exe),
-    oldState?.paseoExe, path.resolve(root, '..', 'tool', 'Paseo', 'Paseo.exe')].filter(Boolean);
+  // 优先复用专用服务选定的运行时，避免被另一个 Paseo 窗口切回旧版。
+  const candidates = [options['--paseo-exe'], oldState?.paseoExe,
+    ...processes.filter(p => p.name.toLowerCase() === 'paseo.exe').map(p => p.exe),
+    path.resolve(root, '..', 'tool', 'Paseo', 'Paseo.exe')].filter(Boolean);
   for (const exe of candidates) {
     const resources = path.join(path.dirname(exe), 'resources');
     const runner = path.join(resources, 'app.asar.unpacked', 'dist', 'daemon', 'node-entrypoint-runner.js');
@@ -125,6 +128,9 @@ async function main() {
     return;
   }
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('需要 Node.js 22 或更新版本');
+  // 启动时验证配置并固定传递给 daemon / provider；停止不受错误配置阻碍。
+  const imageEnv = options['--stop'] ? {} : imageConfigEnv(readImageConfig());
+  Object.assign(process.env, imageEnv);
   const oldState = loadJson(statePath);
   const processes = await processSnapshot();
   const install = resolvePaseo(processes, oldState);
@@ -153,7 +159,7 @@ async function main() {
   config.agents.providers ||= {};
   config.agents.providers.codex = { ...config.agents.providers.codex, enabled: true,
     command: [process.execPath, path.join(root, 'tools', 'paseo_desktop_shim.mjs')],
-    env: { ...config.agents.providers.codex?.env, REM_CODEY_CDP_PORT: String(backend.cdpPort),
+    env: { ...config.agents.providers.codex?.env, ...imageEnv, REM_CODEY_CDP_PORT: String(backend.cdpPort),
       REM_CODEY_RUNTIME_STATE: statePath, REM_CODEY_BRIDGE_LOG: path.join(home, 'logs', 'bridge.jsonl'),
       REM_CODEY_ENFORCE_CAPABILITIES: '1', REM_CODEY_LOG_RAW_EVENTS: '0' },
   };

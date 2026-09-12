@@ -3,6 +3,7 @@ import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DesktopBridge } from './desktop_bridge.mjs';
+import { ImagePreview, readImageConfig } from './image_preview.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const logPath = process.env.REM_CODEY_BRIDGE_LOG || path.join(root, 'evidence', 'paseo-shim.jsonl');
@@ -14,6 +15,7 @@ if (process.argv.includes('--version') || process.argv.includes('-V')) {
   process.exit(0);
 }
 if (!process.argv.includes('app-server')) throw new Error('Only app-server and --version are supported');
+const imagePreview = new ImagePreview(readImageConfig());
 const bridge = await DesktopBridge.connect();
 if (process.env.REM_CODEY_ENFORCE_CAPABILITIES === '1') {
   const config = (await bridge.request('config/read', { includeLayers: false })).config;
@@ -67,7 +69,7 @@ async function handle(message) {
     if (['thread/read', 'thread/resume', 'turn/start', 'turn/steer', 'turn/interrupt'].includes(message.method)) {
       await watchThread(message.params?.threadId);
     }
-    const result = await bridge.request(message.method, message.params || {});
+    const result = await imagePreview.result(await bridge.request(message.method, message.params || {}));
     if (['thread/start', 'thread/read', 'thread/resume', 'thread/fork'].includes(message.method)) {
       await watchThread(result.thread?.id);
     }
@@ -89,7 +91,8 @@ const timer = setInterval(async () => {
   if (polling || ending) return;
   polling = true;
   try {
-    for (const event of await bridge.drain()) {
+    for (const incoming of await bridge.drain()) {
+      for (const event of await imagePreview.notifications(incoming)) {
       if (event.type === 'mcp-notification') {
         const item = event.params?.item;
         if (item?.type === 'subAgentActivity' && item.agentThreadId) {
@@ -106,6 +109,7 @@ const timer = setInterval(async () => {
         const id = ++nextServerId;
         serverRequests.set(id, event.request.id);
         output({ ...event.request, id });
+      }
       }
     }
   } catch (error) {
