@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { contextSettings, settingsPatch, isFast } from '../tools/settings_sync_policy.mjs';
 import { RolloutReader, syncSettingsPass } from '../tools/paseo_settings_sync.mjs';
+import './desktop-bridge-check.mjs';
 
 const first = { turnId: 'a', model: 'gpt-6-astra', effort: 'medium' };
 const pending = { model: 'gpt-5.6-luna', thinkingOptionId: 'high' };
