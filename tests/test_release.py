@@ -96,6 +96,17 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Mobile attachment plugin files"):
             release.build(self.repo, "0.0.2", Path(self.temp.name) / "incomplete-plugin")
 
+    def test_cli_prerelease_versions(self):
+        source = "`0.153.4`"
+        prerelease = "`0.154.0-alpha.6.2`"
+        document = self.document.replace(source, prerelease)
+        self.assertIn(prerelease, release.compatibility_section(document, "0.0.1"))
+        for invalid in ("`0.154.0-`", "`0.154.0-alpha..2`", "`0.154.0-alpha.6.2;echo`", "未核对"):
+            with self.subTest(version=invalid), self.assertRaisesRegex(ValueError, "Codex CLI"):
+                release.compatibility_section(self.document.replace(source, invalid), "0.0.1")
+        with self.assertRaisesRegex(ValueError, "Paseo daemon"):
+            release.compatibility_section(document.replace("`0.7.2`", "`0.8.0-alpha.1`"), "0.0.1")
+
     def test_history_selection_and_dates(self):
         # 固定区间用例，不要求工作区兼容文档与代码在同一次提交更新。
         document = """## 运行条件与验证边界

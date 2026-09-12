@@ -72,7 +72,10 @@ def compatibility_section(document, version):
                 if lower > upper:
                     raise ValueError("Invalid Codey version range: lower bound exceeds upper bound")
                 continue
-            if not re.fullmatch(r"`v?\d+(?:\.\d+)+`", value):
+            # Desktop 可携带 alpha CLI，保留其真实版本；其他组件仍使用原有校验。
+            version_pattern = (r"`v?\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`"
+                               if field == "Codex CLI" else r"`v?\d+(?:\.\d+)+`")
+            if not re.fullmatch(version_pattern, value):
                 raise ValueError(f"Missing compatibility version: {field}")
         if not cells[6]:
             raise ValueError("Missing compatibility scope")
